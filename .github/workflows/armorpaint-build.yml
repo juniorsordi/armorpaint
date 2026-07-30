@@ -34,15 +34,15 @@ jobs:
         run: |
           Write-Host "=== Baixando binarios oficiais do Krom ==="
           
-          # Baixa o zip com os binarios oficiais estáveis do Windows direto do ecossistema do Armory3D
-          Invoke-WebRequest -Uri "https://github.com/armory3d/krom_bin/archive/refs/heads/main.zip" -OutFile "krom_bin.zip"
+          # Link corrigido apontando para a branch 'master' correta do repositorio
+          Invoke-WebRequest -Uri "https://github.com/armory3d/krom_bin/archive/refs/heads/master.zip" -OutFile "krom_bin.zip"
           
           # Extrai os binários na pasta temporária
           Expand-Archive -Path "krom_bin.zip" -DestinationPath "tmp_krom" -Force
           
-          # Move os arquivos executáveis, DLLs e arquivos V8 necessários para a pasta final
-          # Nota: O caminho interno padrão do zip do github inclui o nome da branch '-main'
-          Get-ChildItem -Path "tmp_krom\krom_bin-main\win32" -Filter * -File | ForEach-Object {
+          # Move os arquivos executáveis, DLLs e componentes necessários
+          # Caminho interno atualizado para refletir a branch master extraída pelo GitHub
+          Get-ChildItem -Path "tmp_krom\krom_bin-master\win32" -Filter * -File | ForEach-Object {
               Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
               Write-Host "Injetado componente nativo: $_.Name"
           }
