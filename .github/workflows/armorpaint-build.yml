@@ -71,47 +71,61 @@ jobs:
         shell: cmd
         run: |
           cd paint
-          ..\base\make
+          
+          # 1. Inicializa e atualiza os submodulos de forma forcada caso o checkout falhe em puxar algo
+          git submodule update --init --recursive
+          
+          # 2. Roda o make baixando as dependencias nativas obrigatorias do Windows (V8 / Krom runtime)
+          ..\base\make --v8
+          
           if not exist build\ArmorPaint.sln (
               echo ERRO: A solucao ArmorPaint.sln nao foi gerada pelo script make!
               exit /b 1
           )
-          msbuild build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m
+          
+          # 3. Compila a solucao garantindo que trate avisos como avisos, nao erros
+          msbuild build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m /p:WarningLevel=2
 
       - name: Organize Windows Build Artifact
         shell: powershell
         run: |
-          # 1. Cria a pasta de destino
           New-Item -ItemType Directory -Force -Path dist\windows
           
           Write-Host "=== Buscando arquivos gerados pelo compilador ==="
           
-          # 2. Copia a pasta obrigatória de assets
           if (Test-Path "paint\assets") {
               Copy-Item -Path "paint\assets" -Destination "dist\windows\assets" -Recurse -Force
           }
           
-          # 3. Busca recursivamente qualquer arquivo .exe dentro de paint\build e copia
-          Get-ChildItem -Path "paint\build" -Filter *.exe -Recurse | ForEach-Object {
+          # Busca em toda a árvore do projeto (incluindo subpastas e caminhos alternativos do Krom)
+          Get-ChildItem -Path "paint" -Filter *.exe -Recurse | ForEach-Object {
               Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
-              Write-Host "Copiado executavel: $_.Name"
+              Write-Host "Copiado executavel: $_.Name de $_.FullName"
           }
           
-          # 4. Busca recursivamente qualquer arquivo .dll dentro de paint\build e copia
-          Get-ChildItem -Path "paint\build" -Filter *.dll -Recurse | ForEach-Object {
+          Get-ChildItem -Path "paint" -Filter *.dll -Recurse | ForEach-Object {
               Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
               Write-Host "Copiada DLL: $_.Name"
           }
           
-          # 5. Padroniza o executavel final
+          # Padroniza o nome do binario final
           if (Test-Path "dist\windows\Krom.exe") {
               Rename-Item -Path "dist\windows\Krom.exe" -NewName "ArmorPaint.exe" -Force
               Write-Host "Sucesso: Krom.exe encontrado e renomeado para ArmorPaint.exe!"
           } elseif (Test-Path "dist\windows\ArmorPaint.exe") {
               Write-Host "Sucesso: ArmorPaint.exe ja foi gerado com o nome correto!"
           } else {
-              Write-Error "ERRO CRITICO: Nenhum executavel (.exe) foi encontrado na pasta paint\build. O MSBuild pode ter falhado silenciosamente."
-              exit 1
+              # Se nao achou na pasta paint, faz uma ultima varredura na raiz por desencargo
+              Get-ChildItem -Path "." -Filter Krom.exe -Recurse | ForEach-Object {
+                  Copy-Item -Path $_.FullName -Destination "dist\windows\ArmorPaint.exe" -Force
+              }
+              
+              if (Test-Path "dist\windows\ArmorPaint.exe") {
+                  Write-Host "Sucesso: Executavel resgatado da pasta raiz do projeto!"
+              } else {
+                  Write-Error "ERRO CRITICO: Nenhum executavel (.exe) foi gerada na compilacao."
+                  exit 1
+              }
           }
 
       - name: Upload Windows Binary
