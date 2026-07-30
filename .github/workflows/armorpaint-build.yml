@@ -79,35 +79,40 @@ jobs:
           msbuild build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m
 
       - name: Organize Windows Build Artifact
-        shell: cmd
+        shell: powershell
         run: |
-          mkdir dist\windows
+          # 1. Cria a pasta de destino
+          New-Item -ItemType Directory -Force -Path dist\windows
           
-          echo === Buscando arquivos gerados pelo compilador ===
+          Write-Host "=== Buscando arquivos gerados pelo compilador ==="
           
-          # 1. Copia a pasta obrigatória de assets
-          xcopy /E /I paint\assets dist\windows\assets
+          # 2. Copia a pasta obrigatória de assets
+          if (Test-Path "paint\assets") {
+              Copy-Item -Path "paint\assets" -Destination "dist\windows\assets" -Recurse -Force
+          }
           
-          # 2. Busca e copia qualquer arquivo .exe gerado dentro de paint\build
-          for /R paint\build %%I in (*.exe) do (
-              copy "%%I" dist\windows\
-          )
+          # 3. Busca recursivamente qualquer arquivo .exe dentro de paint\build e copia
+          Get-ChildItem -Path "paint\build" -Filter *.exe -Recurse | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
+              Write-Host "Copiado executavel: $_.Name"
+          }
           
-          # 3. Busca e copia qualquer arquivo .dll (dependencias) gerado dentro de paint\build
-          for /R paint\build %%I in (*.dll) do (
-              copy "%%I" dist\windows\
-          )
+          # 4. Busca recursivamente qualquer arquivo .dll dentro de paint\build e copia
+          Get-ChildItem -Path "paint\build" -Filter *.dll -Recurse | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
+              Write-Host "Copiada DLL: $_.Name"
+          }
           
-          # 4. Padroniza o executável final
-          if exist dist\windows\Krom.exe (
-              ren dist\windows\Krom.exe ArmorPaint.exe
-              echo Sucesso: Krom.exe encontrado e renomeado para ArmorPaint.exe!
-          ) else if exist dist\windows\ArmorPaint.exe (
-              echo Sucesso: ArmorPaint.exe ja foi gerado com o nome correto!
-          ) else (
-              echo ERRO CRITICO: Nenhum executavel (.exe) foi encontrado na pasta paint\build. O MSBuild pode ter falhado silenciosamente.
-              exit /b 1
-          )
+          # 5. Padroniza o executavel final
+          if (Test-Path "dist\windows\Krom.exe") {
+              Rename-Item -Path "dist\windows\Krom.exe" -NewName "ArmorPaint.exe" -Force
+              Write-Host "Sucesso: Krom.exe encontrado e renomeado para ArmorPaint.exe!"
+          } elseif (Test-Path "dist\windows\ArmorPaint.exe") {
+              Write-Host "Sucesso: ArmorPaint.exe ja foi gerado com o nome correto!"
+          } else {
+              Write-Error "ERRO CRITICO: Nenhum executavel (.exe) foi encontrado na pasta paint\build. O MSBuild pode ter falhado silenciosamente."
+              exit 1
+          }
 
       - name: Upload Windows Binary
         uses: actions/upload-artifact@v4
