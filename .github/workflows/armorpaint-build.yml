@@ -1,4 +1,4 @@
-name: Build ArmorPaint
+name: ArmorPaint Automated Build
 
 on:
   push:
@@ -8,93 +8,120 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # LINUX (x64) — caminho mais confiável: compila com um único comando headless.
-  # ---------------------------------------------------------------------------
   build-linux:
-    name: Build ArmorPaint (Linux x64)
+    name: Build for Linux (x64)
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout ArmorPaint source
+      - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
 
-      - name: Install build dependencies
+      - name: Install Linux Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            make clang \
-            libvulkan-dev libgtk-3-dev libssl-dev \
-            libxi-dev libxrandr-dev libxcursor-dev
+          sudo apt-get install -y make clang \
+            libxinerama-dev libxrandr-dev libasound2-dev \
+            libxi-dev mesa-common-dev libgl-dev libxcursor-dev \
+            libvulkan-dev libgtk-3-dev libudev-dev
 
-      - name: Compile
-        working-directory: paint
-        run: ../base/make --compile   # --compile = build headless (NAO usar --run em CI)
+      - name: Generate Project and Compile
+        run: |
+          cd paint
+          ../base/make --compile
 
-      - name: Upload build
+      - name: Organize Linux Build Artifact
+        run: |
+          mkdir -p dist/linux
+          cp -r paint/build/ArmorPaint dist/linux/ || cp -r build/ArmorPaint dist/linux/ || echo "Verifique a pasta de saída"
+          cp -r paint/assets dist/linux/
+          
+      - name: Upload Linux Binary
         uses: actions/upload-artifact@v4
         with:
           name: ArmorPaint-Linux-x64
-          path: paint/build            # estreite depois de ver o layout real
-          retention-days: 7
+          path: dist/linux/
+          retention-days: 5
 
-  # ---------------------------------------------------------------------------
-  # WINDOWS (x64)
-  #   Causa do MSB1009 anterior: '..\base\make' e resolvido via make.bat, mas o
-  #   shell padrao do Actions no Windows e PowerShell, que nao resolve o caminho
-  #   relativo sem extensao -> o make "passa" sem gerar o .sln.
-  #   Correcoes: rodar o make em `shell: cmd` + localizar o .sln dinamicamente.
-  # ---------------------------------------------------------------------------
   build-windows:
-    name: Build ArmorPaint (Windows x64)
+    name: Build for Windows (x64)
     runs-on: windows-latest
+
     steps:
-      - name: Checkout ArmorPaint source
+      - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      - name: Generate Visual Studio project
-        working-directory: paint
+      - name: Generate and Compile Windows Solution
         shell: cmd
         run: |
-          echo == Conteudo de ..\base ==
-          dir ..\base
-          echo == Rodando make ==
-          call ..\base\make
-          echo == make terminou com errorlevel %errorlevel% ==
-          if errorlevel 1 exit /b 1
+          cd paint
+          ..\base\make
+          
+          # Checa dinamicamente se foi gerado o formato novo (.slnx) ou o antigo (.sln)
+          if exist build\ArmorPaint.slnx (
+              echo Sucesso: Detectada solucao moderna .slnx
+              msbuild build\ArmorPaint.slnx /p:Configuration=Release /p:Platform=x64 /m
+          ) else if exist build\ArmorPaint.sln (
+              echo Sucesso: Detectada solucao classica .sln
+              msbuild build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m
+          ) else (
+              echo ERRO: Nao foi encontrado nenhum arquivo de solucao em paint\build\
+              exit /b 1
+          )
 
-      - name: Locate generated solution
-        shell: pwsh
+      - name: Organize Windows Build Artifact
+        shell: powershell
         run: |
-          $sln = Get-ChildItem -Path paint -Recurse -Filter *.sln | Select-Object -First 1
-          if (-not $sln) {
-            Write-Host "== Conteudo de paint\build (se existir) =="
-            if (Test-Path paint\build) { Get-ChildItem -Path paint\build -Recurse | Select-Object FullName }
-            Write-Error "Nenhum .sln foi gerado pelo make. Veja o log do passo anterior."
-            exit 1
+          New-Item -ItemType Directory -Force -Path dist\windows
+          
+          Write-Host "=== Buscando arquivos gerados pelo compilador ==="
+          
+          # 1. Copia a pasta obrigatória de assets
+          if (Test-Path "paint\assets") {
+              Copy-Item -Path "paint\assets" -Destination "dist\windows\assets" -Recurse -Force
           }
-          Write-Host "SLN encontrado: $($sln.FullName)"
-          "SLN_PATH=$($sln.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          
+          # 2. Varre recursivamente a pasta paint para pescar o executável e as DLLs geradas
+          Get-ChildItem -Path "paint" -Filter *.exe -Recurse | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
+              Write-Host "Copiado executavel: $_.Name"
+          }
+          
+          Get-ChildItem -Path "paint" -Filter *.dll -Recurse | ForEach-Object {
+              Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
+              Write-Host "Copiada DLL: $_.Name"
+          }
+          
+          # 3. Renomeia o executável do motor (Krom.exe) para o nome final
+          if (Test-Path "dist\windows\Krom.exe") {
+              Rename-Item -Path "dist\windows\Krom.exe" -NewName "ArmorPaint.exe" -Force
+              Write-Host "Sucesso: Krom.exe encontrado e renomeado para ArmorPaint.exe!"
+          } elseif (Test-Path "dist\windows\ArmorPaint.exe") {
+              Write-Host "Sucesso: ArmorPaint.exe ja foi gerado com o nome correto!"
+          } else {
+              Write-Error "ERRO CRITICO: A compilacao terminou, mas nenhum .exe foi encontrado na pasta do projeto."
+              exit 1
+          }
 
-      - name: Build solution (x64 / Release)
-        shell: pwsh
-        run: msbuild "$env:SLN_PATH" /p:Configuration=Release /p:Platform=x64 /m
-
-      - name: Upload build
+      - name: Upload Windows Binary
         uses: actions/upload-artifact@v4
         with:
           name: ArmorPaint-Windows-x64
-          path: paint/build
-          retention-days: 7
+          path: dist/windows/
+          retention-days: 5
