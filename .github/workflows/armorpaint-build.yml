@@ -32,22 +32,34 @@ jobs:
       - name: Download Official Precompiled Krom Runtime
         shell: powershell
         run: |
-          Write-Host "=== Baixando binarios oficiais do Krom ==="
+          Write-Host "=== Consultando a ultima release oficial do Krom ==="
           
-          # Link corrigido apontando para a branch 'master' correta do repositorio
-          Invoke-WebRequest -Uri "https://github.com/armory3d/krom_bin/archive/refs/heads/master.zip" -OutFile "krom_bin.zip"
+          # 1. Consulta a API do GitHub para pegar a URL de download da última release estável do krom_bin
+          # Isso ignora nomes de branches e vai direto no binário homologado
+          $apiResponse = Invoke-RestMethod -Uri "https://api.github.com/repos/armory3d/krom_bin/releases/latest"
+          $zipUrl = $apiResponse.zipball_url
           
-          # Extrai os binários na pasta temporária
+          Write-Host "Baixando de: $zipUrl"
+          Invoke-WebRequest -Uri $zipUrl -OutFile "krom_bin.zip"
+          
+          # 2. Extrai os binários na pasta temporária
           Expand-Archive -Path "krom_bin.zip" -DestinationPath "tmp_krom" -Force
           
-          # Move os arquivos executáveis, DLLs e componentes necessários
-          # Caminho interno atualizado para refletir a branch master extraída pelo GitHub
-          Get-ChildItem -Path "tmp_krom\krom_bin-master\win32" -Filter * -File | ForEach-Object {
-              Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
-              Write-Host "Injetado componente nativo: $_.Name"
+          # 3. Localiza a pasta interna (o GitHub gera o nome baseado na tag da release) e move os arquivos do win32
+          $extractedFolder = Get-ChildItem -Path "tmp_krom" -Directory | Select-Object -First 1
+          $win32Path = Join-Path $extractedFolder.FullName "win32"
+          
+          if (Test-Path $win32Path) {
+              Get-ChildItem -Path $win32Path -Filter * -File | ForEach-Object {
+                  Copy-Item -Path $_.FullName -Destination "dist\windows\" -Force
+                  Write-Host "Injetado componente nativo: $_.Name"
+              }
+          } else {
+              Write-Error "Pasta 'win32' nao encontrada dentro da release baixada."
+              exit 1
           }
           
-          # Limpa os temporários de download
+          # 4. Limpa os temporários de download
           Remove-Item -Path "krom_bin.zip" -Force
           Remove-Item -Path "tmp_krom" -Recurse -Force
 
