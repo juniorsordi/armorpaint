@@ -84,6 +84,12 @@ jobs:
           mkdir dist\windows
           xcopy /E /I paint\build\x64\Release dist\windows
           xcopy /E /I paint\assets dist\windows\assets
+          if exist dist\windows\Krom.exe (
+              ren dist\windows\Krom.exe ArmorPaint.exe
+              echo Sucesso: Krom.exe renomeado para ArmorPaint.exe
+          ) else (
+              echo AVISO: Krom.exe nao foi encontrado na pasta de Release.
+          )
 
       - name: Upload Windows Binary
         uses: actions/upload-artifact@v4
