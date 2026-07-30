@@ -16,7 +16,7 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
-          submodules: recursive # Garante compatibilidade com submodules se houver
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,13 +34,11 @@ jobs:
       - name: Generate Project and Compile
         run: |
           cd paint
-          # Executa o script de compilação da base do ArmorPaint
           ../base/make --compile
 
       - name: Organize Linux Build Artifact
         run: |
           mkdir -p dist/linux
-          # O executável compilado e os assets necessários ficam na pasta build e paint
           cp -r paint/build/ArmorPaint dist/linux/ || cp -r build/ArmorPaint dist/linux/ || echo "Verifique a pasta de saída"
           cp -r paint/assets dist/linux/
           
@@ -69,17 +67,16 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      - name: Generate Visual Studio Project
+      - name: Generate and Compile Windows Solution
         shell: cmd
         run: |
           cd paint
           ..\base\make
-
-      - name: Compile Solution via MSBuild 
-        shell: cmd
-        run: |
-          # Compila o projeto gerado no modo Release para x64
-          msbuild paint\build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m
+          if not exist build\ArmorPaint.sln (
+              echo ERRO: A solucao ArmorPaint.sln nao foi gerada pelo script make!
+              exit /b 1
+          )
+          msbuild build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m
 
       - name: Organize Windows Build Artifact
         shell: cmd
