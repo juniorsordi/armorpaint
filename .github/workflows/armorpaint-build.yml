@@ -67,7 +67,13 @@ jobs:
       - name: Generate Visual Studio project
         working-directory: paint
         shell: cmd
-        run: ..\base\make
+        run: |
+          echo == Conteudo de ..\base ==
+          dir ..\base
+          echo == Rodando make ==
+          call ..\base\make
+          echo == make terminou com errorlevel %errorlevel% ==
+          if errorlevel 1 exit /b 1
 
       - name: Locate generated solution
         shell: pwsh
