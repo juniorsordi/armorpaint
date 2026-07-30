@@ -82,13 +82,31 @@ jobs:
         shell: cmd
         run: |
           mkdir dist\windows
-          xcopy /E /I paint\build\x64\Release dist\windows
+          
+          echo === Buscando arquivos gerados pelo compilador ===
+          
+          # 1. Copia a pasta obrigatória de assets
           xcopy /E /I paint\assets dist\windows\assets
+          
+          # 2. Busca e copia qualquer arquivo .exe gerado dentro de paint\build
+          for /R paint\build %%I in (*.exe) do (
+              copy "%%I" dist\windows\
+          )
+          
+          # 3. Busca e copia qualquer arquivo .dll (dependencias) gerado dentro de paint\build
+          for /R paint\build %%I in (*.dll) do (
+              copy "%%I" dist\windows\
+          )
+          
+          # 4. Padroniza o executável final
           if exist dist\windows\Krom.exe (
               ren dist\windows\Krom.exe ArmorPaint.exe
-              echo Sucesso: Krom.exe renomeado para ArmorPaint.exe
+              echo Sucesso: Krom.exe encontrado e renomeado para ArmorPaint.exe!
+          ) else if exist dist\windows\ArmorPaint.exe (
+              echo Sucesso: ArmorPaint.exe ja foi gerado com o nome correto!
           ) else (
-              echo AVISO: Krom.exe nao foi encontrado na pasta de Release.
+              echo ERRO CRITICO: Nenhum executavel (.exe) foi encontrado na pasta paint\build. O MSBuild pode ter falhado silenciosamente.
+              exit /b 1
           )
 
       - name: Upload Windows Binary
