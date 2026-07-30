@@ -1,0 +1,96 @@
+name: ArmorPaint Automated Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build for Linux (x64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # Garante compatibilidade com submodules se houver
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make clang \
+            libxinerama-dev libxrandr-dev libasound2-dev \
+            libxi-dev mesa-common-dev libgl-dev libxcursor-dev \
+            libvulkan-dev libgtk-3-dev libudev-dev
+
+      - name: Generate Project and Compile
+        run: |
+          cd paint
+          # Executa o script de compilação da base do ArmorPaint
+          ../base/make --compile
+
+      - name: Organize Linux Build Artifact
+        run: |
+          mkdir -p dist/linux
+          # O executável compilado e os assets necessários ficam na pasta build e paint
+          cp -r paint/build/ArmorPaint dist/linux/ || cp -r build/ArmorPaint dist/linux/ || echo "Verifique a pasta de saída"
+          cp -r paint/assets dist/linux/
+          
+      - name: Upload Linux Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArmorPaint-Linux-x64
+          path: dist/linux/
+          retention-days: 5
+
+  build-windows:
+    name: Build for Windows (x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Generate Visual Studio Project
+        shell: cmd
+        run: |
+          cd paint
+          ..\base\make
+
+      - name: Compile Solution via MSBuild 
+        shell: cmd
+        run: |
+          # Compila o projeto gerado no modo Release para x64
+          msbuild paint\build\ArmorPaint.sln /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Organize Windows Build Artifact
+        shell: cmd
+        run: |
+          mkdir dist\windows
+          xcopy /E /I paint\build\x64\Release dist\windows
+          xcopy /E /I paint\assets dist\windows\assets
+
+      - name: Upload Windows Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArmorPaint-Windows-x64
+          path: dist/windows/
+          retention-days: 5
